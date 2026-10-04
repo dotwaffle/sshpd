@@ -11,7 +11,7 @@ release_version=$2
 mkdir -p "$release_dir"
 printf 'platform\tsshpd_bytes\tsshpc_bytes\tarchive_bytes\n' > "$release_dir/sizes.tsv"
 
-for target in linux/amd64 linux/arm64 darwin/amd64 freebsd/amd64; do
+for target in linux/amd64 linux/arm64 darwin/arm64 freebsd/amd64; do
   target_os=${target%/*}
   target_arch=${target#*/}
   archive_name="sshpd_${release_version}_${target_os}_${target_arch}.tar.gz"

@@ -50,7 +50,7 @@ The SQLite driver does not require cgo.
 ## CI and releases
 
 GitHub Actions runs the full checks on branch pushes and pull requests.
-It also runs race tests on Linux arm64 and macOS amd64.
+It also runs race tests on Linux arm64 and macOS arm64.
 CI cross-builds release archives without publishing them.
 
 An existing `vMAJOR.MINOR.PATCH` tag triggers publication after all checks pass.
@@ -61,7 +61,7 @@ It does not update a `latest` image tag.
 The workflow uses the repository's `GITHUB_TOKEN` and needs no registry secret.
 The first GHCR package can require a manual visibility change before anonymous pulls work.
 
-GitHub Releases receive compressed archives for Linux amd64/arm64, macOS amd64, and FreeBSD amd64.
+GitHub Releases receive compressed archives for Linux amd64/arm64, macOS arm64, and FreeBSD amd64.
 Each archive contains `sshpd`, `sshpc`, a sample configuration, and build information.
 The release includes SHA-256 checksums, archive sizes, and the container digest.
 FreeBSD binaries are experimental until runtime acceptance passes.
