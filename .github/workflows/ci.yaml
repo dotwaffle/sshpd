@@ -51,5 +51,12 @@ jobs:
           go-version-file: go.mod
           check-latest: true
           cache: false
-      - run: go test -race ./... -timeout=20m
+      - name: Run native race tests
+        run: |
+          # Keep test socket paths below the BSD Unix socket path limit.
+          test_dir=/tmp/build/sshpd/ci
+          mkdir -p "$test_dir"
+          chmod 700 "$test_dir"
+          trap 'rm -rf "$test_dir"' EXIT
+          TMPDIR="$test_dir" go test -race ./... -timeout=20m
       - run: CGO_ENABLED=0 go build -trimpath -buildvcs=false ./...
