@@ -1,0 +1,17 @@
+/.agents/
+/.aws/
+/.claude/
+/.codex/
+/.env
+/.env.*
+/deploy/
+/dist/
+/sshpc
+/sshpd
+/state/
+*.db
+*.db-shm
+*.db-wal
+*.test
+*.prof
+coverage.out

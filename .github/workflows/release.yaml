@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    uses: ./.github/workflows/ci.yaml
+
+  publish:
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      packages: write
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      SOURCE_REVISION: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Validate version tag
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ || ${#RELEASE_TAG} -gt 128 ]]; then
+            echo 'Expected vMAJOR.MINOR.PATCH with an optional prerelease suffix.' >&2
+            exit 1
+          fi
+      - name: Check release retry state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft > "$RUNNER_TEMP/sshpd-release-draft.txt"; then
+            if [[ "$(cat "$RUNNER_TEMP/sshpd-release-draft.txt")" != true ]]; then
+              echo 'This release is already published. Do not replace its image or assets.' >&2
+              exit 1
+            fi
+          fi
+      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+        with:
+          install_args: go ko
+      - name: Build compressed binaries and checksums
+        run: |
+          SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)
+          export SOURCE_DATE_EPOCH
+          mise exec -- bash scripts/build-release.sh "$RUNNER_TEMP/sshpd-release" "$RELEASE_TAG"
+      - name: Publish multi-platform container
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
+          IMAGE_SOURCE: ${{ github.server_url }}/${{ github.repository }}
+          REGISTRY_USER: ${{ github.actor }}
+        run: |
+          export KO_DOCKER_REPO="${IMAGE_REPOSITORY,,}"
+          printf '%s' "$GH_TOKEN" | mise exec -- ko login ghcr.io --username "$REGISTRY_USER" --password-stdin
+          mise exec -- ko build --bare --platform=linux/amd64,linux/arm64 --tags="$RELEASE_TAG" --image-user=1000:1000 --ldflags='-s -w' --image-label="org.opencontainers.image.source=$IMAGE_SOURCE" --image-label="org.opencontainers.image.revision=$SOURCE_REVISION" --image-label="org.opencontainers.image.version=$RELEASE_TAG" --image-refs="$RUNNER_TEMP/sshpd-release/container.txt" ./cmd/sshpd
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          release_dir="$RUNNER_TEMP/sshpd-release"
+          prerelease=false
+          if [[ "$RELEASE_TAG" == v0.* || "$RELEASE_TAG" == *-* ]]; then
+            prerelease=true
+          fi
+          printf 'Each archive contains sshpd, sshpc, a sample configuration, and build information.\n\nFreeBSD binaries are experimental and require runtime acceptance.\n\nContainer image:\n' > "$release_dir/notes.txt"
+          cat "$release_dir/container.txt" >> "$release_dir/notes.txt"
+          if ! gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft > "$release_dir/draft.txt"; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG" --notes-file "$release_dir/notes.txt"
+          elif [[ "$(cat "$release_dir/draft.txt")" != true ]]; then
+            echo 'This release is already published. Do not replace its assets.' >&2
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" "$release_dir"/*.tar.gz "$release_dir/SHA256SUMS" "$release_dir/sizes.tsv" "$release_dir/container.txt" --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease="$prerelease" --latest=false --notes-file "$release_dir/notes.txt"
+          cat "$release_dir/sizes.tsv" >> "$GITHUB_STEP_SUMMARY"
+          cat "$release_dir/container.txt" >> "$GITHUB_STEP_SUMMARY"

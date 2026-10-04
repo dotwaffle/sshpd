@@ -47,12 +47,43 @@ go build -buildvcs=false -o /tmp/build/sshpd/bin/sshpc ./cmd/sshpc
 `generate` regenerates sqlc code from embedded migration schemas and queries.
 The SQLite driver does not require cgo.
 
+## CI and releases
+
+GitHub Actions runs the full checks on branch pushes and pull requests.
+It also runs race tests on Linux arm64 and macOS amd64.
+CI cross-builds release archives without publishing them.
+
+An existing `vMAJOR.MINOR.PATCH` tag triggers publication after all checks pass.
+Tags can include a prerelease suffix, such as `v0.1.0-alpha.1`.
+The workflow does not create tags.
+It publishes a Linux amd64/arm64 image to `ghcr.io/dotwaffle/sshpd` with the exact version tag.
+It does not update a `latest` image tag.
+The workflow uses the repository's `GITHUB_TOKEN` and needs no registry secret.
+The first GHCR package can require a manual visibility change before anonymous pulls work.
+
+GitHub Releases receive compressed archives for Linux amd64/arm64, macOS amd64, and FreeBSD amd64.
+Each archive contains `sshpd`, `sshpc`, a sample configuration, and build information.
+The release includes SHA-256 checksums, archive sizes, and the container digest.
+FreeBSD binaries are experimental until runtime acceptance passes.
+Version-zero tags and tags with prerelease suffixes produce prereleases.
+The workflow leaves automatic latest-release selection disabled.
+Failed asset uploads leave a draft release for a workflow retry.
+
+Binaries use GitHub Release storage instead of GitHub Packages storage.
+The workflows do not upload temporary Actions artifacts.
+GitHub currently provides free GHCR storage and bandwidth.
+See [Packages billing](https://docs.github.com/en/billing/concepts/product-billing/github-packages) and [Release limits](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases).
+
 ## Configure the server
 
 Copy [examples/sshpd.json](examples/sshpd.json) to your configuration location.
 Set the public HTTPS origin and RP ID before enrolling passkeys.
 Use a persistent local volume for the state directory.
 The directory must belong to the server UID and have mode 0700.
+
+Keep local configuration and Compose files in `deploy/`.
+Git ignores that directory.
+The `examples/` directory contains public sample configuration.
 The server creates a missing directory with that mode.
 It rejects existing directories with broader permissions.
 
