@@ -57,6 +57,9 @@ form.addEventListener('submit', async event => {
   status.textContent = '';
   try {
     if (enrolling && !invitation) throw new Error('Open a valid enrollment link from your operator.');
+    if (!navigator.credentials || typeof navigator.credentials[enrolling ? 'create' : 'get'] !== 'function') {
+      throw new Error('This browser does not support passkeys. Use a browser with passkey support.');
+    }
     const kind = enrolling ? 'register' : approving ? 'native' : 'login';
     const begin = await post(`/auth/${kind}/begin`, enrolling ? {invitation} : approving ? {name: name.value, approval} : {name: name.value});
     const publicKey = begin.publicKey;
@@ -87,9 +90,11 @@ form.addEventListener('submit', async event => {
       const link = document.createElement('a');
       link.href = '/login'; link.textContent = 'Sign in';
       status.append(' ', link);
+      link.focus();
     } else if (approving) {
       status.textContent = 'Native login approved. Return to your command line.';
       form.hidden = true;
+      status.focus();
     } else {
       status.textContent = 'Signed in. Return to your Terminal connection.';
       if (new URLSearchParams(location.search).get('close') === '1') window.close();

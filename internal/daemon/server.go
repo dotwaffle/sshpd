@@ -155,6 +155,7 @@ func (a *App) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Robots-Tag", "noindex")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 	switch r.URL.Path {
 	case "/v4/connect", "/v4/reconnect":
@@ -265,8 +266,7 @@ func (a *App) discovery(w http.ResponseWriter, r *http.Request) {
 		a.endpoint(w, u.Host)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = io.WriteString(w, `<!doctype html><html lang="en"><meta charset="utf-8"><title>Signed in</title><script src="/assets/close.js" defer></script><p>Signed in. You can close this window.</p></html>`)
+	a.static(w, r, "close.html", "text/html; charset=utf-8")
 }
 
 func (a *App) endpoint(w http.ResponseWriter, host string) {
