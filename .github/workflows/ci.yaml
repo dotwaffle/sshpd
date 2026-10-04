@@ -46,11 +46,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-go@v7
+      - uses: jdx/mise-action@v5
         with:
-          go-version-file: go.mod
-          check-latest: true
-          cache: false
+          install_args: go@1.26
+      - run: mise exec go@1.26 -- go version
       - name: Run native race tests
         run: |
           # Keep test socket paths below the BSD Unix socket path limit.
@@ -58,5 +57,5 @@ jobs:
           mkdir -p "$test_dir"
           chmod 700 "$test_dir"
           trap 'rm -rf "$test_dir"' EXIT
-          TMPDIR="$test_dir" go test -race ./... -timeout=20m
-      - run: CGO_ENABLED=0 go build -trimpath -buildvcs=false ./...
+          TMPDIR="$test_dir" mise exec go@1.26 -- go test -race ./... -timeout=20m
+      - run: CGO_ENABLED=0 mise exec go@1.26 -- go build -trimpath -buildvcs=false ./...
