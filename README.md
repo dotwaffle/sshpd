@@ -7,7 +7,7 @@ SSH host-key verification and SSH authentication remain between the SSH client a
 The project includes a passkey server, a resumable protocol client, and an OpenSSH ProxyCommand helper with a private credential agent.
 Basic ChromeOS Terminal login and sleep/resume tests passed on a real device.
 Exact browser replay during partial acceptance and Caddy reload remain untested.
-OpenTelemetry integration is pending.
+Optional OpenTelemetry exports short operation spans and aggregate metrics.
 
 ## Packages
 
@@ -333,6 +333,56 @@ These addresses are diagnostic fields, not admission credentials or metric label
 Exempt the actual relay backend source address from sshd fail2ban rules where required.
 In a container, that address can be the Docker bridge address.
 The relay cannot inspect encrypted SSH authentication failures.
+
+## Telemetry
+
+Telemetry is disabled by default.
+Set `"telemetry": {"enabled": true, "sample_ratio": 0.1}` in the server configuration to enable OTLP HTTP export.
+Changes require a restart.
+The sampling ratio accepts zero through one and defaults to 0.1.
+Zero disables sampled traces but preserves metrics and audit events.
+
+Set `OTEL_EXPORTER_OTLP_ENDPOINT` to the collector's base URL.
+The HTTP exporters append `/v1/traces` and `/v1/metrics`.
+Signal-specific endpoints and authentication headers use the standard `OTEL_EXPORTER_OTLP_TRACES_*` and `OTEL_EXPORTER_OTLP_METRICS_*` environment variables.
+Use HTTPS for remote collectors.
+Keep collector credentials outside the repository.
+`OTEL_METRIC_EXPORT_INTERVAL` sets the metric interval in milliseconds, with a default of 60000.
+The server limits each export to five seconds.
+
+The daemon passes explicit providers to the relay and store.
+Embedded relays can supply `TracerProvider` and `MeterProvider` through `relay.Config`.
+The server does not install global providers or accept incoming trace or baggage headers.
+Its resource contains only `service.name=sshpd`.
+
+Spans cover HTTP authentication, admission, backend dialing, reconnect, lifecycle events, and SQLite transaction phases.
+Connect and reconnect spans end before stream handling starts.
+Reconnect and lifecycle spans link to the initial connect span.
+Spans omit identities, destinations, IPs, SIDs, URLs, headers, credentials, and stream contents.
+Logs can include internal trace IDs and validated client and peer IPs.
+Audit records retain their documented ownership fields independently of trace sampling.
+
+| Metric | Meaning |
+| --- | --- |
+| `sshpd.operations` | Operation count by fixed operation and outcome |
+| `sshpd.operation.duration` | Operation duration in seconds |
+| `sshpd.relay.sessions` | Attached and detached session counts |
+| `sshpd.relay.dialing` | Pending admissions and backend dials |
+| `sshpd.relay.replay.capacity` | Allocated replay capacity in bytes |
+| `sshpd.relay.audit.lost` | Dropped or rejected audit events |
+| `sshpd.sqlite.busy` | Retried SQLite busy errors |
+| `sshpd.sqlite.pool.connections` | Open SQLite connections |
+| `sshpd.sqlite.pool.waits` | Cumulative waits for a pooled connection |
+| `sshpd.sqlite.pool.wait.duration` | Cumulative pool wait time in seconds |
+| `sshpd.sqlite.wal.size` | Current WAL file size in bytes |
+
+Metric labels contain fixed operation, outcome, or session state values.
+Each instrument permits at most 64 attribute sets.
+The trace queue holds at most 256 spans and exports batches of at most 64 spans.
+Queue saturation can discard traces.
+Collector failures produce generic diagnostics and do not change admission or resume policy.
+Telemetry does not replace audit storage or provide crash durability.
+Shutdown drains telemetry within one five-second deadline.
 
 ## Storage and backups
 

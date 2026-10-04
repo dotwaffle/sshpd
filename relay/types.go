@@ -7,6 +7,9 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Relay admission and lifecycle errors.
@@ -48,6 +51,7 @@ type AuditEvent struct {
 	Requested, Backend      Endpoint
 	Received, Sent          uint64
 	ClientIP, PeerIP        string
+	TraceContext            trace.SpanContext
 }
 
 // AuditSink records unsampled audit events. Record must honor ctx and support
@@ -84,6 +88,8 @@ type Config struct {
 	AuditQueue                                     int
 	StrictAudit                                    bool
 	MaxDialing                                     int
+	TracerProvider                                 trace.TracerProvider
+	MeterProvider                                  metric.MeterProvider
 }
 
 // Stats reports aggregate counters without principal or protocol session IDs.

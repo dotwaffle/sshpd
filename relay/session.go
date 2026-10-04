@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/dotwaffle/sshpd/internal/replay"
 	"github.com/dotwaffle/sshpd/internal/requestmeta"
@@ -17,13 +18,14 @@ import (
 )
 
 type session struct {
-	sid, id   string
-	client    requestmeta.Client
-	grant     Grant
-	target    Target
-	requested Endpoint
-	backend   net.Conn
-	inMu      sync.Mutex
+	sid, id      string
+	client       requestmeta.Client
+	traceContext trace.SpanContext
+	grant        Grant
+	target       Target
+	requested    Endpoint
+	backend      net.Conn
+	inMu         sync.Mutex
 	// Server.mu guards fields below. stop is immutable after construction.
 	stop              context.CancelFunc
 	out               replay.Buffer

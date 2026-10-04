@@ -13,12 +13,15 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 	"unicode"
 
 	"github.com/pressly/goose/v3"
+	"go.opentelemetry.io/otel/metric"
 	"modernc.org/sqlite"
 
+	"github.com/dotwaffle/sshpd/internal/observe"
 	"github.com/dotwaffle/sshpd/internal/store/queries"
 )
 
@@ -52,13 +55,17 @@ type Login struct {
 
 // Store owns one database connection. Transactions never include network waits.
 type Store struct {
-	db *sql.DB
-	q  *queries.Queries
+	db                *sql.DB
+	q                 *queries.Queries
+	observer          *observe.Recorder
+	busy              metric.Int64Counter
+	statsRegistration metric.Registration
+	unregister        sync.Once
 }
 
 // Open installs per-connection pragmas, verifies them, and migrates before use.
 // The caller supplies an absolute path in an owner-only directory.
-func Open(ctx context.Context, path string) (*Store, error) {
+func Open(ctx context.Context, path string, options ...Option) (*Store, error) {
 	if !filepath.IsAbs(path) {
 		return nil, errors.New("database path must be absolute")
 	}
@@ -77,8 +84,12 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	s := &Store{db: db, q: queries.New(db)}
-	if err = s.initialize(ctx); err != nil {
+	if err = s.observe(path, options); err != nil {
 		_ = db.Close()
+		return nil, fmt.Errorf("initialize database telemetry: %w", err)
+	}
+	if err = s.initialize(ctx); err != nil {
+		_ = s.Close()
 		return nil, err
 	}
 	return s, nil
@@ -127,40 +138,68 @@ func (s *Store) initialize(ctx context.Context) error {
 }
 
 // Close releases the database connection.
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() error {
+	s.unregister.Do(func() {
+		if s.statsRegistration != nil {
+			_ = s.statsRegistration.Unregister()
+		}
+	})
+	return s.db.Close()
+}
 
 // Stats exposes connection-pool waits without identity labels.
 func (s *Store) Stats() sql.DBStats { return s.db.Stats() }
 
 func (s *Store) transact(ctx context.Context, work func(*queries.Queries) error) error {
+	ctx, operation := s.observer.Start(ctx, "sqlite.transaction")
+	outcome := "error"
+	defer func() { operation.End(ctx, outcome) }()
 	var err error
 	for attempt := range 3 {
 		err = s.attempt(ctx, work)
 		var busy *sqlite.Error
 		if !errors.As(err, &busy) || busy.Code()&0xff != 5 || ctx.Err() != nil {
+			if err == nil {
+				outcome = "ok"
+			}
 			return err
 		}
+		s.busy.Add(ctx, 1)
 		timer := time.NewTimer(time.Duration(10*(attempt+1)) * time.Millisecond)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
+			outcome = "canceled"
 			return ctx.Err()
 		case <-timer.C:
 		}
 	}
+	outcome = "busy"
 	return err
 }
 
 func (s *Store) attempt(ctx context.Context, work func(*queries.Queries) error) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	beginCtx, acquisition := s.observer.Start(ctx, "sqlite.begin")
+	tx, err := s.db.BeginTx(beginCtx, nil)
+	outcome := "ok"
+	if err != nil {
+		outcome = "error"
+	}
+	acquisition.End(beginCtx, outcome)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := work(s.q.WithTx(tx)); err != nil {
-		return err
+	if workErr := work(s.q.WithTx(tx)); workErr != nil {
+		return workErr
 	}
-	return tx.Commit()
+	commitCtx, commit := s.observer.Start(ctx, "sqlite.commit")
+	err = tx.Commit()
+	if err != nil {
+		outcome = "error"
+	}
+	commit.End(commitCtx, outcome)
+	return err
 }
 
 func userSnapshot(ctx context.Context, q *queries.Queries, row queries.User) (User, error) {

@@ -15,6 +15,12 @@ type Client struct {
 
 type clientKey struct{}
 
+// FromContext returns validated addresses when a server attached them.
+func FromContext(ctx context.Context) (Client, bool) {
+	client, ok := ctx.Value(clientKey{}).(Client)
+	return client, ok
+}
+
 // WithClient attaches addresses that the server has validated.
 func WithClient(ctx context.Context, client Client) context.Context {
 	return context.WithValue(ctx, clientKey{}, client)
@@ -22,7 +28,7 @@ func WithClient(ctx context.Context, client Client) context.Context {
 
 // FromRequest returns validated metadata or the direct transport peer.
 func FromRequest(r *http.Request) Client {
-	if client, ok := r.Context().Value(clientKey{}).(Client); ok {
+	if client, ok := FromContext(r.Context()); ok {
 		return client
 	}
 	ip := Peer(r.RemoteAddr)

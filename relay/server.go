@@ -20,7 +20,10 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 
+	"github.com/dotwaffle/sshpd/internal/observe"
 	"github.com/dotwaffle/sshpd/internal/requestmeta"
 	"github.com/dotwaffle/sshpd/protocol"
 )
@@ -60,6 +63,9 @@ type Server struct {
 	pressureCredit              uint64
 	lastMemoryUsed              uint64
 	pressureBlocked             bool
+	observer                    *observe.Recorder
+	auditLoss                   metric.Int64ObservableCounter
+	statsRegistration           metric.Registration
 }
 
 // New validates dependencies and starts bounded maintenance and audit workers.
@@ -68,10 +74,18 @@ func New(ctx context.Context, cfg Config) (*Server, error) {
 	if err := defaults(&cfg); err != nil {
 		return nil, err
 	}
+	observer, err := observe.NewRecorder("github.com/dotwaffle/sshpd/relay", cfg.TracerProvider, cfg.MeterProvider)
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	s := &Server{cfg: cfg, sessions: make(map[string]*session), pending: make(map[*reservation]bool),
 		revokedUsers: make(map[string]revocation), revokedLogins: make(map[string]revocation),
-		closed: make(chan struct{}), stop: cancel, auditQueue: make(chan AuditEvent, cfg.AuditQueue), auditDone: make(chan struct{})}
+		closed: make(chan struct{}), stop: cancel, auditQueue: make(chan AuditEvent, cfg.AuditQueue), auditDone: make(chan struct{}), observer: observer}
+	if err := s.observeStats(); err != nil {
+		cancel()
+		return nil, err
+	}
 	go s.auditLoop(ctx)
 	go s.maintenance(ctx)
 	return s, nil
@@ -90,6 +104,7 @@ func defaults(c *Config) error {
 	if c.Logger == nil {
 		c.Logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	}
+	c.Logger = observe.Logger(c.Logger)
 	if c.Now == nil {
 		c.Now = time.Now
 	}
@@ -216,18 +231,22 @@ func requestEndpoint(r *http.Request) (Endpoint, error) {
 }
 
 func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
+	operationCtx, operation := s.observer.Start(r.Context(), "relay.connect")
+	outcome := "error"
+	defer func() { operation.End(operationCtx, outcome) }()
 	requested, err := requestEndpoint(r)
 	if err != nil {
 		http.Error(w, "invalid destination", http.StatusBadRequest)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), s.cfg.DialTimeout)
+	ctx, cancel := context.WithTimeout(operationCtx, s.cfg.DialTimeout)
 	defer cancel()
 	s.mu.Lock()
 	res := &reservation{cancel: cancel, epoch: s.epoch, destinationEpoch: s.destinationEpoch}
 	s.mu.Unlock()
-	grant, err := s.cfg.Authorizer.Admit(ctx, r, requested)
+	grant, err := s.admit(ctx, r, requested)
 	if err != nil || ctx.Err() != nil || grant.UserID == "" || grant.LoginID == "" || grant.ClientKind == "" || grant.ClientID == "" {
+		outcome = "denied"
 		http.Error(w, "admission denied", http.StatusUnauthorized)
 		return
 	}
@@ -248,7 +267,7 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.release(res)
-	backend, err := s.cfg.Dialer.DialContext(ctx, "tcp", target.Backend.Address())
+	backend, err := s.dial(ctx, target.Backend)
 	if err != nil || ctx.Err() != nil {
 		if backend != nil {
 			_ = backend.Close()
@@ -258,8 +277,8 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 	}
 	var token [32]byte
 	_, _ = rand.Read(token[:])
-	readCtx, readCancel := context.WithCancel(context.WithoutCancel(r.Context()))
-	p := &session{sid: hex.EncodeToString(token[:]), id: rand.Text(), client: requestmeta.FromRequest(r), grant: grant, target: target, requested: requested, backend: backend, wake: make(chan struct{}), stop: readCancel}
+	readCtx, readCancel := context.WithCancel(context.WithoutCancel(operationCtx))
+	p := &session{sid: hex.EncodeToString(token[:]), id: rand.Text(), client: requestmeta.FromRequest(r), traceContext: trace.SpanContextFromContext(operationCtx), grant: grant, target: target, requested: requested, backend: backend, wake: make(chan struct{}), stop: readCancel}
 	if err = s.commit(ctx, res, p); err != nil {
 		readCancel()
 		_ = backend.Close()
@@ -290,10 +309,15 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 		_ = ws.CloseNow()
 		return
 	}
-	s.run(context.WithoutCancel(r.Context()), p, a, protocol.Packet{Tag: protocol.ConnectSuccess, Bytes: []byte(p.sid)})
+	outcome = "ok"
+	operation.End(operationCtx, outcome)
+	s.run(context.WithoutCancel(operationCtx), p, a, protocol.Packet{Tag: protocol.ConnectSuccess, Bytes: []byte(p.sid)})
 }
 
 func (s *Server) reconnect(w http.ResponseWriter, r *http.Request) {
+	ctx, operation := s.observer.Start(r.Context(), "relay.reconnect")
+	outcome := "error"
+	defer func() { operation.End(ctx, outcome) }()
 	q := r.URL.Query()
 	ack, err := strconv.ParseUint(q.Get("ack"), 10, 64)
 	if err != nil || len(q["sid"]) != 1 || len(q["ack"]) != 1 {
@@ -304,8 +328,12 @@ func (s *Server) reconnect(w http.ResponseWriter, r *http.Request) {
 	p := s.sessions[q.Get("sid")]
 	s.mu.Unlock()
 	if p == nil {
+		outcome = "gone"
 		http.Error(w, "session gone", http.StatusGone)
 		return
+	}
+	if p.traceContext.IsValid() {
+		trace.SpanFromContext(ctx).AddLink(trace.Link{SpanContext: p.traceContext})
 	}
 	ws, err := s.accept(w, r)
 	if err != nil {
@@ -321,7 +349,9 @@ func (s *Server) reconnect(w http.ResponseWriter, r *http.Request) {
 	event := s.eventLocked(p, "session.resume", "")
 	s.mu.Unlock()
 	s.emit(event)
-	s.run(context.WithoutCancel(r.Context()), p, a, protocol.Packet{Tag: protocol.ReconnectSuccess, Position: received})
+	outcome = "ok"
+	operation.End(ctx, outcome)
+	s.run(context.WithoutCancel(ctx), p, a, protocol.Packet{Tag: protocol.ReconnectSuccess, Position: received})
 }
 
 func (s *Server) accept(w http.ResponseWriter, r *http.Request) (*websocket.Conn, error) {
@@ -536,6 +566,7 @@ func (s *Server) Close() error {
 	default:
 		close(s.closed)
 	}
+	defer func() { _ = s.statsRegistration.Unregister() }()
 	var list []*session
 	for _, p := range s.sessions {
 		s.removeLocked(p, "server_closed")

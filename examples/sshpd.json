@@ -20,6 +20,7 @@
   "allow_no_uv": false,
   "strict_audit": false,
   "trusted_proxies": [],
+  "telemetry": {"enabled": false, "sample_ratio": 0.1},
   "limits": {
     "sessions": 1024,
     "sessions_per_user": 32,

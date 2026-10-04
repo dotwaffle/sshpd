@@ -18,6 +18,7 @@ import (
 
 	"github.com/dotwaffle/sshpd/internal/auth"
 	"github.com/dotwaffle/sshpd/internal/nativeapi"
+	"github.com/dotwaffle/sshpd/internal/observe"
 	"github.com/dotwaffle/sshpd/internal/requestmeta"
 	"github.com/dotwaffle/sshpd/internal/store"
 	"github.com/dotwaffle/sshpd/relay"
@@ -37,6 +38,8 @@ type App struct {
 	auth       *auth.Service
 	registry   *relay.Registry
 	relay      *relay.Server
+	providers  *observe.Providers
+	observer   *observe.Recorder
 }
 
 // New migrates storage and configures authentication before any listener opens.
@@ -50,16 +53,28 @@ func New(ctx context.Context, cfg Config, logger *slog.Logger) (*App, error) {
 	if err := privateDir(cfg.StateDir); err != nil {
 		return nil, err
 	}
-	db, err := store.Open(ctx, filepath.Join(cfg.StateDir, "admission.db"))
+	logger = observe.Logger(logger)
+	providers, err := observe.New(ctx, cfg.Telemetry, logger)
 	if err != nil {
+		return nil, err
+	}
+	observer, err := observe.NewRecorder("github.com/dotwaffle/sshpd/internal/daemon", providers.Traces, providers.Metrics)
+	if err != nil {
+		_ = providers.Close(ctx)
+		return nil, err
+	}
+	db, err := store.Open(ctx, filepath.Join(cfg.StateDir, "admission.db"), store.WithTelemetry(providers.Traces, providers.Metrics))
+	if err != nil {
+		_ = providers.Close(ctx)
 		return nil, err
 	}
 	if err = db.PruneAtStartup(ctx, time.Now()); err != nil {
 		_ = db.Close()
+		_ = providers.Close(ctx)
 		return nil, err
 	}
 	serverCtx, cancel := context.WithCancel(ctx)
-	app := &App{cfg: cfg, logger: logger, store: db, stop: cancel, workerDone: make(chan struct{})}
+	app := &App{cfg: cfg, logger: logger, store: db, stop: cancel, workerDone: make(chan struct{}), providers: providers, observer: observer}
 	app.registry, err = relay.NewRegistry(cfg.targets())
 	if err == nil {
 		app.auth, err = auth.New(auth.Config{Origin: cfg.PublicOrigin, RPID: cfg.RPID, AllowNoUV: cfg.AllowNoUV,
@@ -70,11 +85,13 @@ func New(ctx context.Context, cfg Config, logger *slog.Logger) (*App, error) {
 		limit := debug.SetMemoryLimit(-1)
 		app.relay, err = relay.New(serverCtx, relay.Config{Authorizer: app.auth, Resolver: app.registry, Logger: logger,
 			Origins: append(slices.Clone(cfg.TerminalOrigins), cfg.PublicOrigin), Limits: cfg.Limits.relayLimits(),
-			MemoryLimit: uint64(max(0, limit)), MemoryUsage: memoryUsage, StrictAudit: cfg.StrictAudit})
+			MemoryLimit: uint64(max(0, limit)), MemoryUsage: memoryUsage, StrictAudit: cfg.StrictAudit,
+			TracerProvider: providers.Traces, MeterProvider: providers.Metrics})
 	}
 	if err != nil {
 		cancel()
 		_ = db.Close()
+		_ = providers.Close(ctx)
 		return nil, err
 	}
 	go app.maintenance(serverCtx)
@@ -113,9 +130,14 @@ func (a *App) Reload(ctx context.Context, next Config) error {
 
 // Close terminates relay streams and releases storage.
 func (a *App) Close() error {
+	return a.CloseContext(context.Background())
+}
+
+// CloseContext terminates streams and drains telemetry within five seconds.
+func (a *App) CloseContext(ctx context.Context) error {
 	a.stop()
 	<-a.workerDone
-	return errors.Join(a.relay.Close(), a.store.Close())
+	return errors.Join(a.relay.Close(), a.providers.Close(ctx), a.store.Close())
 }
 
 func (a *App) maintenance(ctx context.Context) {
@@ -148,7 +170,11 @@ func (a *App) prune(ctx context.Context) {
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	client := forwardedClient(r, a.cfg.trustedProxies)
 	r = r.WithContext(requestmeta.WithClient(r.Context(), client))
-	a.serveHTTP(w, r)
+	if r.URL.Path == "/v4/connect" || r.URL.Path == "/v4/reconnect" {
+		a.serveHTTP(w, r)
+		return
+	}
+	a.observeHTTP(w, r)
 }
 
 func (a *App) serveHTTP(w http.ResponseWriter, r *http.Request) {
