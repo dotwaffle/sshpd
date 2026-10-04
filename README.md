@@ -386,6 +386,8 @@ Shutdown drains telemetry within one five-second deadline.
 
 ## Storage and backups
 
+Use the [operations procedure](docs/operations.md) for upgrade, restore, and rollback preparation.
+
 SQLite uses WAL, a 5000 ms busy timeout, foreign keys, and synchronous FULL on every connection.
 Startup reads those values back before migrations.
 The pool starts with one open and one idle connection.
