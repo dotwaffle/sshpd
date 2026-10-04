@@ -1,0 +1,10 @@
+defaultBaseImage: cgr.dev/chainguard/static:latest
+builds:
+  - id: sshpd
+    dir: .
+    main: ./cmd/sshpd
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+      - -buildvcs=false

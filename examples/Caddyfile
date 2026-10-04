@@ -1,0 +1,29 @@
+{
+	log default {
+		format filter {
+			wrap json
+			fields {
+				request>uri delete
+				request>headers>Cookie delete
+				request>headers>Authorization delete
+			}
+		}
+	}
+}
+
+relay.example.com {
+	log {
+		format filter {
+			wrap json
+			fields {
+				request>uri delete
+				request>headers>Cookie delete
+				request>headers>Authorization delete
+			}
+		}
+	}
+
+	reverse_proxy 127.0.0.1:8080 {
+		stream_close_delay 20m
+	}
+}

@@ -1,0 +1,11 @@
+body { font: 1rem/1.5 system-ui, sans-serif; margin: 0; color: #18222d; background: #f4f6f8; }
+main { max-width: 30rem; margin: 10vh auto; padding: 2rem; background: white; border: 1px solid #d5dae0; border-radius: .5rem; }
+label { display: block; margin-bottom: .5rem; }
+input { box-sizing: border-box; width: 100%; font: inherit; padding: .6rem; margin-bottom: 1rem; }
+button { font: inherit; padding: .6rem 1rem; cursor: pointer; }
+button:disabled { cursor: wait; }
+#status { min-height: 1.5rem; }
+#logout { margin-top: 1rem; }
+button:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid #1558a0; outline-offset: 3px; }
+#description { overflow-wrap: anywhere; }
+@media (max-width: 36rem) { main { margin: 2rem 1rem; padding: 1rem; } }

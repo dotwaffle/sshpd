@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>sshpd sign in</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/auth.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1 id="title">Sign in to sshpd</h1>
+    <p id="description">Use your passkey to connect through the SSH relay.</p>
+    <form id="form">
+      <div id="name-field">
+        <label for="name">User name (required)</label>
+        <input id="name" name="name" autocomplete="username webauthn" required maxlength="64" aria-describedby="description">
+      </div>
+      <button id="submit" type="submit">Sign in with a passkey</button>
+    </form>
+    <p id="status" role="status" aria-live="polite"></p>
+    <button id="logout" type="button">Sign out of this login</button>
+  </main>
+</body>
+</html>

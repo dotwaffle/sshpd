@@ -1,0 +1,32 @@
+{
+  "listen": "127.0.0.1:8080",
+  "state_dir": "/var/lib/sshpd",
+  "public_origin": "https://relay.example.com",
+  "rp_id": "relay.example.com",
+  "terminal_origins": ["chrome-untrusted://terminal"],
+  "login_ttl": "12h",
+  "invite_ttl": "15m",
+  "ceremony_ttl": "5m",
+  "approval_ttl": "5m",
+  "ticket_ttl": "30s",
+  "destinations": [
+    {
+      "id": "home",
+      "aliases": [{"host": "home.example.com", "port": 22}],
+      "backend": {"host": "127.0.0.1", "port": 2222}
+    }
+  ],
+  "drop_removed": false,
+  "allow_no_uv": false,
+  "strict_audit": false,
+  "limits": {
+    "sessions": 1024,
+    "sessions_per_user": 32,
+    "replay_bytes": 1048576,
+    "retention": "15m",
+    "eviction_age": "1m",
+    "replacement_age": "1m",
+    "pressure_high": 0.8,
+    "pressure_low": 0.7
+  }
+}

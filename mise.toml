@@ -1,0 +1,54 @@
+min_version = "2026.7.12"
+
+[settings]
+lockfile = true
+
+[tool_alias]
+govulncheck = "go:golang.org/x/vuln/cmd/govulncheck"
+
+[tools]
+actionlint = "1"
+go = "1.27"
+ko = "0.19.1"
+golangci-lint = "2"
+govulncheck = "1"
+rumdl = "0.2"
+sqlc = "1"
+
+[tasks.format]
+description = "Format Go sources and Markdown"
+run = ["golangci-lint fmt", "rumdl fmt ."]
+
+[tasks.lint]
+description = "Run static analysis"
+run = [
+  "if [ -d .github/workflows ]; then actionlint; fi",
+  "rumdl check .",
+  "go vet ./...",
+  "golangci-lint run",
+]
+
+[tasks.test]
+description = "Run the test suite"
+run = "go test ./..."
+
+[tasks."test:race"]
+description = "Run tests with the race detector"
+run = "go test -race ./... -timeout=30m"
+
+[tasks.vulncheck]
+description = "Check dependencies for known vulnerabilities"
+run = "govulncheck ./..."
+
+[tasks.build]
+description = "Build all packages without cgo"
+env = { CGO_ENABLED = "0" }
+run = "go build -trimpath -buildvcs=false ./..."
+
+[tasks.generate]
+description = "Generate Go sources"
+run = "go generate ./..."
+
+[tasks.check]
+description = "Run tests, static analysis, vulnerability checks, and build"
+depends = ["test:race", "lint", "vulncheck", "build"]
