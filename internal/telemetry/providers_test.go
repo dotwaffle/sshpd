@@ -1,4 +1,4 @@
-package observe
+package telemetry
 
 import (
 	"bytes"
@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/dotwaffle/sshpd/internal/observe"
 )
 
 func TestSamplingConfig(t *testing.T) {
@@ -58,7 +60,7 @@ func TestOTLPExportAndRedactedFailure(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			r, err := NewRecorder("test", providers.Traces, providers.Metrics)
+			r, err := observe.NewRecorder("test", providers.Traces, providers.Metrics)
 			if err != nil {
 				t.Fatal(err)
 			}

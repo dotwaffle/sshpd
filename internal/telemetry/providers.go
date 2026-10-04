@@ -1,5 +1,5 @@
-// Package observe provides bounded telemetry without admission credentials.
-package observe
+// Package telemetry owns the daemon's bounded OTLP exporters.
+package telemetry
 
 import (
 	"context"

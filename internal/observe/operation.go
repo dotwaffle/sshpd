@@ -1,3 +1,4 @@
+// Package observe measures operations through explicit telemetry APIs.
 package observe
 
 import (

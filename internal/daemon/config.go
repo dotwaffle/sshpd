@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dotwaffle/sshpd/internal/observe"
+	"github.com/dotwaffle/sshpd/internal/telemetry"
 	"github.com/dotwaffle/sshpd/relay"
 )
 
@@ -72,23 +72,23 @@ func (l limits) relayLimits() relay.Limits {
 // Config is the strict JSON configuration for one standalone server.
 // SIGHUP permits changes only to destinations and their immediate-close policy.
 type Config struct {
-	Listen          string         `json:"listen"`
-	StateDir        string         `json:"state_dir"`
-	PublicOrigin    string         `json:"public_origin"`
-	RPID            string         `json:"rp_id"`
-	TerminalOrigins []string       `json:"terminal_origins"`
-	AllowNoUV       bool           `json:"allow_no_uv"`
-	LoginTTL        Duration       `json:"login_ttl"`
-	InviteTTL       Duration       `json:"invite_ttl"`
-	CeremonyTTL     Duration       `json:"ceremony_ttl"`
-	ApprovalTTL     Duration       `json:"approval_ttl"`
-	TicketTTL       Duration       `json:"ticket_ttl"`
-	Destinations    []destination  `json:"destinations"`
-	DropRemoved     bool           `json:"drop_removed"`
-	Limits          limits         `json:"limits"`
-	StrictAudit     bool           `json:"strict_audit"`
-	TrustedProxies  []string       `json:"trusted_proxies"`
-	Telemetry       observe.Config `json:"telemetry"`
+	Listen          string           `json:"listen"`
+	StateDir        string           `json:"state_dir"`
+	PublicOrigin    string           `json:"public_origin"`
+	RPID            string           `json:"rp_id"`
+	TerminalOrigins []string         `json:"terminal_origins"`
+	AllowNoUV       bool             `json:"allow_no_uv"`
+	LoginTTL        Duration         `json:"login_ttl"`
+	InviteTTL       Duration         `json:"invite_ttl"`
+	CeremonyTTL     Duration         `json:"ceremony_ttl"`
+	ApprovalTTL     Duration         `json:"approval_ttl"`
+	TicketTTL       Duration         `json:"ticket_ttl"`
+	Destinations    []destination    `json:"destinations"`
+	DropRemoved     bool             `json:"drop_removed"`
+	Limits          limits           `json:"limits"`
+	StrictAudit     bool             `json:"strict_audit"`
+	TrustedProxies  []string         `json:"trusted_proxies"`
+	Telemetry       telemetry.Config `json:"telemetry"`
 	trustedProxies  []netip.Prefix
 }
 

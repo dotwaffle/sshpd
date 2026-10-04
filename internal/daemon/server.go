@@ -21,6 +21,7 @@ import (
 	"github.com/dotwaffle/sshpd/internal/observe"
 	"github.com/dotwaffle/sshpd/internal/requestmeta"
 	"github.com/dotwaffle/sshpd/internal/store"
+	"github.com/dotwaffle/sshpd/internal/telemetry"
 	"github.com/dotwaffle/sshpd/relay"
 )
 
@@ -38,7 +39,7 @@ type App struct {
 	auth       *auth.Service
 	registry   *relay.Registry
 	relay      *relay.Server
-	providers  *observe.Providers
+	providers  *telemetry.Providers
 	observer   *observe.Recorder
 }
 
@@ -54,7 +55,7 @@ func New(ctx context.Context, cfg Config, logger *slog.Logger) (*App, error) {
 		return nil, err
 	}
 	logger = observe.Logger(logger)
-	providers, err := observe.New(ctx, cfg.Telemetry, logger)
+	providers, err := telemetry.New(ctx, cfg.Telemetry, logger)
 	if err != nil {
 		return nil, err
 	}

@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/dotwaffle/sshpd/internal/observe"
+	"github.com/dotwaffle/sshpd/internal/telemetry"
 )
 
 func TestHTTPTraceNamesExcludeRequestData(t *testing.T) {
@@ -38,7 +39,7 @@ func TestHTTPTraceNamesExcludeRequestData(t *testing.T) {
 	}
 	zero := 0.0
 	next := h.app.cfg
-	next.Telemetry = observe.Config{Enabled: true, SampleRatio: &zero}
+	next.Telemetry = telemetry.Config{Enabled: true, SampleRatio: &zero}
 	if err = h.app.Reload(t.Context(), next); err == nil {
 		t.Fatal("telemetry changed without a restart")
 	}
