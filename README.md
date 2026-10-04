@@ -318,8 +318,18 @@ Do not enable Caddy's `log_credentials` option.
 It cannot establish browser resume correctness.
 See the [Caddy logging documentation](https://caddyserver.com/docs/caddyfile/directives/log) and [streaming proxy settings](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#streaming).
 
-The minimal server does not trust forwarded client IP headers.
-Trusted-proxy client-IP auditing is pending with the observability integration.
+The server ignores forwarding headers by default.
+Set `trusted_proxies` to the IPv4 or IPv6 CIDRs of the proxies that connect to the relay.
+For example, use `["192.0.2.10/32"]` for one proxy address.
+Trust only networks whose members you control.
+Changes require a restart.
+
+For a trusted transport peer, the server reads `X-Forwarded-For` from right to left.
+It stops at the first address outside the configured proxy networks.
+Malformed or oversized chains fall back to the transport peer.
+The server ignores `X-Real-IP`, which Caddy does not set by default.
+Audit events include the validated client IP and the transport peer IP.
+These addresses are diagnostic fields, not admission credentials or metric labels.
 Exempt the actual relay backend source address from sshd fail2ban rules where required.
 In a container, that address can be the Docker bridge address.
 The relay cannot inspect encrypted SSH authentication failures.

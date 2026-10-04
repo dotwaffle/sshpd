@@ -18,6 +18,7 @@ import (
 
 	"github.com/dotwaffle/sshpd/internal/auth"
 	"github.com/dotwaffle/sshpd/internal/nativeapi"
+	"github.com/dotwaffle/sshpd/internal/requestmeta"
 	"github.com/dotwaffle/sshpd/internal/store"
 	"github.com/dotwaffle/sshpd/relay"
 )
@@ -145,6 +146,12 @@ func (a *App) prune(ctx context.Context) {
 // ServeHTTP exposes relay discovery, passkey ceremonies, and static login pages.
 // The administration handler is available only through the private socket.
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	client := forwardedClient(r, a.cfg.trustedProxies)
+	r = r.WithContext(requestmeta.WithClient(r.Context(), client))
+	a.serveHTTP(w, r)
+}
+
+func (a *App) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")

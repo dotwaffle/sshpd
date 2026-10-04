@@ -47,6 +47,7 @@ type AuditEvent struct {
 	DestinationID           string
 	Requested, Backend      Endpoint
 	Received, Sent          uint64
+	ClientIP, PeerIP        string
 }
 
 // AuditSink records unsampled audit events. Record must honor ctx and support

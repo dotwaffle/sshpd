@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -85,6 +86,8 @@ type Config struct {
 	DropRemoved     bool          `json:"drop_removed"`
 	Limits          limits        `json:"limits"`
 	StrictAudit     bool          `json:"strict_audit"`
+	TrustedProxies  []string      `json:"trusted_proxies"`
+	trustedProxies  []netip.Prefix
 }
 
 // Load rejects unknown fields, extra JSON values, and invalid policy values.
@@ -112,6 +115,17 @@ func Load(path string) (Config, error) {
 }
 
 func (c *Config) validate() error {
+	if len(c.TrustedProxies) > 64 {
+		return errors.New("trusted_proxies permits at most 64 CIDRs")
+	}
+	c.trustedProxies = nil
+	for _, text := range c.TrustedProxies {
+		prefix, err := netip.ParsePrefix(text)
+		if err != nil || prefix.Addr().Is4In6() {
+			return errors.New("trusted_proxies must contain IPv4 or IPv6 CIDRs")
+		}
+		c.trustedProxies = append(c.trustedProxies, prefix.Masked())
+	}
 	if c.Listen == "" {
 		c.Listen = "127.0.0.1:8080"
 	}

@@ -12,11 +12,13 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/dotwaffle/sshpd/internal/replay"
+	"github.com/dotwaffle/sshpd/internal/requestmeta"
 	"github.com/dotwaffle/sshpd/protocol"
 )
 
 type session struct {
 	sid, id   string
+	client    requestmeta.Client
 	grant     Grant
 	target    Target
 	requested Endpoint
@@ -42,7 +44,16 @@ type attachment struct {
 func (a *attachment) stop()      { a.once.Do(func() { close(a.done); _ = a.ws.CloseNow() }) }
 func (p *session) signalLocked() { close(p.wake); p.wake = make(chan struct{}) }
 
-func (s *Server) attach(p *session, ws *websocket.Conn, ack uint64, resume bool) (*attachment, error) {
+type attachInput struct {
+	session *session
+	ws      *websocket.Conn
+	ack     uint64
+	resume  bool
+	client  requestmeta.Client
+}
+
+func (s *Server) attach(input attachInput) (*attachment, error) {
+	p, ws, ack, resume := input.session, input.ws, input.ack, input.resume
 	// Wait for old backend writes before taking the reconnect ACK snapshot.
 	p.inMu.Lock()
 	defer p.inMu.Unlock()
@@ -66,6 +77,7 @@ func (s *Server) attach(p *session, ws *websocket.Conn, ack uint64, resume bool)
 	old := p.attached
 	a := &attachment{ws: ws, done: make(chan struct{}), cursor: ack}
 	p.attached = a
+	p.client = input.client
 	p.detached = time.Time{}
 	p.signalLocked()
 	s.mu.Unlock()

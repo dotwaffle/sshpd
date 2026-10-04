@@ -37,6 +37,7 @@ func (s *Server) record(ctx context.Context, event AuditEvent) error {
 		slog.String("user_id", event.Grant.UserID), slog.String("login_id", event.Grant.LoginID),
 		slog.String("client_kind", event.Grant.ClientKind), slog.String("client_id", event.Grant.ClientID),
 		slog.String("destination_id", event.DestinationID), slog.String("backend", event.Backend.Address()),
+		slog.String("client_ip", event.ClientIP), slog.String("peer_ip", event.PeerIP),
 		slog.String("reason", event.Reason), slog.Uint64("received_bytes", event.Received), slog.Uint64("sent_bytes", event.Sent))
 	return nil
 }
@@ -78,5 +79,5 @@ func (s *Server) drainAudit(ctx context.Context) {
 func (s *Server) eventLocked(p *session, kind, reason string) AuditEvent {
 	return AuditEvent{Time: s.cfg.Now(), Kind: kind, Reason: reason, SessionID: p.id,
 		Grant: p.grant, DestinationID: p.target.ID, Requested: p.requested, Backend: p.target.Backend,
-		Received: p.received, Sent: p.out.End()}
+		Received: p.received, Sent: p.out.End(), ClientIP: p.client.IP, PeerIP: p.client.Peer}
 }

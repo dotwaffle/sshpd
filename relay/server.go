@@ -21,6 +21,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/dotwaffle/sshpd/internal/requestmeta"
 	"github.com/dotwaffle/sshpd/protocol"
 )
 
@@ -258,7 +259,7 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 	var token [32]byte
 	_, _ = rand.Read(token[:])
 	readCtx, readCancel := context.WithCancel(context.WithoutCancel(r.Context()))
-	p := &session{sid: hex.EncodeToString(token[:]), id: rand.Text(), grant: grant, target: target, requested: requested, backend: backend, wake: make(chan struct{}), stop: readCancel}
+	p := &session{sid: hex.EncodeToString(token[:]), id: rand.Text(), client: requestmeta.FromRequest(r), grant: grant, target: target, requested: requested, backend: backend, wake: make(chan struct{}), stop: readCancel}
 	if err = s.commit(ctx, res, p); err != nil {
 		readCancel()
 		_ = backend.Close()
@@ -284,7 +285,7 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 		s.terminate(p, "handshake_failed")
 		return
 	}
-	a, err := s.attach(p, ws, 0, false)
+	a, err := s.attach(attachInput{session: p, ws: ws, client: requestmeta.FromRequest(r)})
 	if err != nil {
 		_ = ws.CloseNow()
 		return
@@ -310,7 +311,7 @@ func (s *Server) reconnect(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	a, err := s.attach(p, ws, ack, true)
+	a, err := s.attach(attachInput{session: p, ws: ws, ack: ack, resume: true, client: requestmeta.FromRequest(r)})
 	if err != nil {
 		_ = ws.Close(websocket.StatusPolicyViolation, "resume rejected")
 		return

@@ -19,6 +19,7 @@
   "drop_removed": false,
   "allow_no_uv": false,
   "strict_audit": false,
+  "trusted_proxies": [],
   "limits": {
     "sessions": 1024,
     "sessions_per_user": 32,
