@@ -43,12 +43,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          if gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft > "$RUNNER_TEMP/sshpd-release-draft.txt"; then
-            if [[ "$(cat "$RUNNER_TEMP/sshpd-release-draft.txt")" != true ]]; then
-              echo 'This release is already published. Do not replace its image or assets.' >&2
-              exit 1
-            fi
-          fi
+          bash scripts/release-state.sh
       - uses: jdx/mise-action@v5
         with:
           install_args: go ko
@@ -79,11 +74,9 @@ jobs:
           fi
           printf 'Each archive contains sshpd, sshpc, a sample configuration, and build information.\n\nFreeBSD binaries are experimental and require runtime acceptance.\n\nContainer image:\n' > "$release_dir/notes.txt"
           cat "$release_dir/container.txt" >> "$release_dir/notes.txt"
-          if ! gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft > "$release_dir/draft.txt"; then
+          release_state=$(bash scripts/release-state.sh)
+          if [[ "$release_state" == missing ]]; then
             gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG" --notes-file "$release_dir/notes.txt"
-          elif [[ "$(cat "$release_dir/draft.txt")" != true ]]; then
-            echo 'This release is already published. Do not replace its assets.' >&2
-            exit 1
           fi
           gh release upload "$RELEASE_TAG" "$release_dir"/*.tar.gz "$release_dir/SHA256SUMS" "$release_dir/sizes.tsv" "$release_dir/container.txt" --clobber
           gh release edit "$RELEASE_TAG" --draft=false --prerelease="$prerelease" --latest=false --notes-file "$release_dir/notes.txt"

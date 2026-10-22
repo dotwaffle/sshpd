@@ -37,6 +37,10 @@ run = "go test ./..."
 description = "Run tests with the race detector"
 run = "go test -race ./... -timeout=30m"
 
+[tasks."test:release"]
+description = "Check release publication guards without network access"
+run = "bash scripts/release-state-test.sh"
+
 [tasks."test:compat"]
 description = "Check the minimum supported Go release"
 tools = { go = "1.26" }
@@ -57,4 +61,4 @@ run = "go generate ./..."
 
 [tasks.check]
 description = "Run tests, static analysis, vulnerability checks, and build"
-depends = ["test:race", "lint", "vulncheck", "build"]
+depends = ["test:race", "test:release", "lint", "vulncheck", "build"]
