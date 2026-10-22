@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
+
 	"github.com/dotwaffle/sshpd/protocol"
 )
 
@@ -255,6 +257,11 @@ func TestBackendEOFPreservesFinalBytesUntilACK(t *testing.T) {
 	sendCommand(t, ws, protocol.Packet{Tag: protocol.ACK, Position: 5})
 	if event := h.waitEvent(t, "session.close"); event.Reason != "backend_eof" {
 		t.Fatalf("EOF close: %+v", event)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if _, _, err := ws.Read(ctx); websocket.CloseStatus(err) != websocket.StatusNormalClosure {
+		t.Fatalf("backend EOF must close normally: %v", err)
 	}
 }
 

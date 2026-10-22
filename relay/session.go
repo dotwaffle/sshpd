@@ -334,6 +334,14 @@ func (s *Server) terminate(p *session, reason string) {
 	}
 	s.removeLocked(p, reason)
 	s.mu.Unlock()
+	if reason == "backend_eof" && p.attached != nil {
+		a := p.attached
+		a.once.Do(func() {
+			// Finish the handshake before cancellation can close the transport.
+			_ = a.ws.Close(websocket.StatusNormalClosure, "backend EOF")
+			close(a.done)
+		})
+	}
 	closeSession(p)
 }
 
