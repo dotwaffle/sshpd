@@ -9,9 +9,21 @@
 </head>
 <body>
   <main>
+    <p class="brand">sshpd <span>SSH relay</span></p>
     <h1 id="title">Sign in to sshpd</h1>
     <p id="description">Use your passkey to connect through the SSH relay.</p>
-    <form id="form">
+    <p id="session-status" class="session-status" role="status" hidden></p>
+    <section id="approval-details" aria-label="Login approval details" hidden>
+      <table>
+        <caption>Compare these details with your command line.</caption>
+        <tbody>
+          <tr><th scope="row">Code</th><td><code id="approval-code"></code></td></tr>
+          <tr><th scope="row">Client</th><td><code id="approval-client"></code></td></tr>
+          <tr><th scope="row">Expires</th><td><time id="approval-expiry"></time></td></tr>
+        </tbody>
+      </table>
+    </section>
+    <form id="form" hidden>
       <div id="name-field">
         <label for="name">User name (required)</label>
         <input id="name" name="name" autocomplete="username webauthn" autocapitalize="none" spellcheck="false" required maxlength="64" aria-describedby="description status">
@@ -20,7 +32,7 @@
     </form>
     <p id="status" role="status" aria-live="polite" tabindex="-1"></p>
     <noscript>This page requires JavaScript to use your browser's passkey support.</noscript>
-    <button id="logout" type="button">Sign out of this login</button>
+    <button id="logout" class="secondary" type="button" hidden>Sign out of this browser</button>
   </main>
 </body>
 </html>
