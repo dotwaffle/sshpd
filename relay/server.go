@@ -143,7 +143,7 @@ func defaults(c *Config) error {
 		}
 	}
 	if l.Retention == 0 {
-		l.Retention = 15 * time.Minute
+		l.Retention = 30 * time.Minute
 	}
 	if l.EvictionAge == 0 {
 		l.EvictionAge = time.Minute

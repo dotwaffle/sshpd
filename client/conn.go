@@ -120,7 +120,7 @@ func prepare(cfg *Config) (*url.URL, error) {
 		cfg.ReplayBytes = 1 << 20
 	}
 	if cfg.ResumeWindow == 0 {
-		cfg.ResumeWindow = 15 * time.Minute
+		cfg.ResumeWindow = 30 * time.Minute
 	}
 	if cfg.MinBackoff == 0 {
 		cfg.MinBackoff = time.Second

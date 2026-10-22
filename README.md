@@ -195,7 +195,7 @@ The native protocol client has independent replay tests.
 | Passkey ceremony lifetime | 5 minutes |
 | Native approval lifetime (`approval_ttl`) | 5 minutes |
 | Native ticket lifetime (`ticket_ttl`) | 30 seconds |
-| Detached stream retention | 15 minutes |
+| Detached stream retention | 30 minutes |
 | Total sessions | 1024 |
 | Sessions per user | 32 |
 | Replay bytes per session | 1 MiB |
@@ -357,8 +357,8 @@ After admission, the helper owns its SID and replay buffers.
 Agent loss does not terminate an established stream or its reconnect attempts.
 New connections require another explicit login after agent loss or reboot.
 Resume uses only the SID and byte offsets, without another ticket or passkey prompt.
-The default retry window is 15 minutes with bounded jittered backoff.
-Use `--resume-window 15m` on `sshpc proxy` to set that window.
+The default retry window is 30 minutes with bounded jittered backoff.
+Use `--resume-window 30m` on `sshpc proxy` to set that window.
 Definitive SID loss ends the helper without creating another backend.
 Server restart ends existing streams and SIDs.
 

@@ -15,7 +15,7 @@ type proxyCommand struct {
 	ConfiguredFlags
 	Host         string        `required:"" help:"SSH destination host."`
 	Port         uint          `default:"22" help:"SSH destination port."`
-	ResumeWindow time.Duration `default:"15m" help:"Maximum retry time after transport loss."`
+	ResumeWindow time.Duration `default:"30m" help:"Maximum retry time after transport loss."`
 }
 
 type clientCLI struct {

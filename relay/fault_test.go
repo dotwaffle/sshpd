@@ -266,14 +266,29 @@ func TestBackendEOFPreservesFinalBytesUntilACK(t *testing.T) {
 }
 
 func TestRetentionExpiryInvalidatesDetachedSID(t *testing.T) {
-	h := newHarness(t, nil)
-	ws, _, _ := h.connect(t, nil)
-	ws.CloseNow()
-	h.waitEvent(t, "session.detach")
-	h.now.Add(int64(15 * time.Minute))
-	h.s.sweep(h.s.cfg.Now(), 0)
-	if event := h.waitEvent(t, "session.close"); event.Reason != "retention_expired" || h.s.Stats().Detached != 0 {
-		t.Fatal("expired detached session retained")
+	for _, test := range []struct {
+		name             string
+		configured, want time.Duration
+	}{
+		{"default", 0, 30 * time.Minute},
+		{"override", 2 * time.Minute, 2 * time.Minute},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := newHarness(t, func(c *Config) { c.Limits.Retention = test.configured })
+			ws, _, _ := h.connect(t, nil)
+			ws.CloseNow()
+			h.waitEvent(t, "session.detach")
+			h.now.Add(int64(test.want - time.Nanosecond))
+			h.s.sweep(h.s.cfg.Now(), 0)
+			if h.s.Stats().Detached != 1 {
+				t.Fatal("detached session expired before retention deadline")
+			}
+			h.now.Add(int64(time.Nanosecond))
+			h.s.sweep(h.s.cfg.Now(), 0)
+			if event := h.waitEvent(t, "session.close"); event.Reason != "retention_expired" || h.s.Stats().Detached != 0 {
+				t.Fatal("expired detached session retained")
+			}
+		})
 	}
 }
 
