@@ -92,7 +92,7 @@ The server creates a missing directory with that mode.
 It rejects existing directories with broader permissions.
 
 ```sh
-sshpd serve -config /etc/sshpd.json
+sshpd serve --config /etc/sshpd.json
 ```
 
 The server runs database migrations before opening listeners.
@@ -130,14 +130,20 @@ The listener checks the peer UID with the operating system.
 The public HTTP server has no administration route.
 
 ```sh
-sshpd admin -socket /var/lib/sshpd/admin.sock user-add alice
-sshpd admin -socket /var/lib/sshpd/admin.sock users
-sshpd admin -socket /var/lib/sshpd/admin.sock user-invite alice
-sshpd admin -socket /var/lib/sshpd/admin.sock key-remove alice KEY_ID
-sshpd admin -socket /var/lib/sshpd/admin.sock user-disable alice
-sshpd admin -socket /var/lib/sshpd/admin.sock user-recover alice
-sshpd admin -socket /var/lib/sshpd/admin.sock user-delete alice
+sshpd admin --socket /var/lib/sshpd/admin.sock user add alice
+sshpd admin --socket /var/lib/sshpd/admin.sock user list
+sshpd admin --socket /var/lib/sshpd/admin.sock user invite alice
+sshpd admin --socket /var/lib/sshpd/admin.sock key remove alice KEY_ID
+sshpd admin --socket /var/lib/sshpd/admin.sock user disable alice
+sshpd admin --socket /var/lib/sshpd/admin.sock user recover alice
+sshpd admin --socket /var/lib/sshpd/admin.sock user delete alice
 ```
+
+Both binaries provide command-specific help, such as `sshpd admin user --help` and `sshpc proxy --help`.
+Long flags require two dashes.
+When upgrading, change `-config` and `-socket` in service definitions or scripts to `--config` and `--socket`.
+Replace flat admin actions such as `user-add` with `user add`, and `users` with `user list`.
+These CLI changes do not change the private administration API or the daemon configuration format.
 
 `user-add`, `user-invite`, and `user-recover` return an enrollment link in JSON.
 Send that link directly to the user.
@@ -239,6 +245,7 @@ It does not confirm backend delivery or send an SSH disconnect.
 ## Connect with OpenSSH
 
 The native helper supports Linux, macOS, and Linux inside ChromeOS Crostini.
+FreeBSD amd64 has passed native tests, login, SSH proxy, and logout checks.
 Install `sshpc` on your PATH, then start an explicit login:
 
 ```sh
@@ -253,6 +260,25 @@ The command does not open a browser.
 Approval expires after five minutes by default.
 The polling proof remains in the agent and prevents another client from collecting the login grant.
 
+To set a default relay, create a client configuration file:
+
+```json
+{"server": "https://relay.example.com"}
+```
+
+On Linux and FreeBSD, use `$XDG_CONFIG_HOME/sshpc/config.json`, or `~/.config/sshpc/config.json` if `XDG_CONFIG_HOME` is unset.
+On macOS, use `~/Library/Application Support/sshpc/config.json`.
+The system default is `/etc/sshpc.json`.
+The user file takes priority over the system file.
+An empty object allows the system default to apply.
+Invalid files stop the command instead of selecting another server.
+Files must contain one JSON object, with no unknown fields, and must not exceed 64 KiB.
+
+For `login` and `proxy`, `--server` overrides configuration.
+Alternatively, `--config PATH` selects one file instead of the user and system files.
+Each use of a configured default prints the server and configuration path to stderr.
+Configuration stores no credentials.
+
 Use the helper as an OpenSSH ProxyCommand:
 
 ```sh
@@ -265,10 +291,50 @@ OpenSSH verifies the host key and performs SSH authentication through its existi
 ProxyCommand writes only SSH bytes to stdout.
 It never starts a login or opens a browser.
 
+One wildcard rule in `~/.ssh/config` can route a group of destinations through the relay:
+
+```sshconfig
+Host *.internal.example
+    ProxyCommand sshpc proxy --host %h --port %p
+```
+
+This example uses the configured default server.
+Add `--server https://relay.example.com` to select a relay for this group explicitly.
+Put specific host settings before general wildcard rules.
+Each destination and port must still match an allowed relay alias.
+OpenSSH retains responsibility for destination authentication and host-key verification.
+The helper does not interpret slash-separated bastion paths or expand SSH aliases itself.
+
+Without `--server`, status and logout cover every server known to the selected local agent:
+
+```sh
+sshpc status
+sshpc logout
+```
+
+The configured default does not narrow these commands.
+Status returns a JSON object with `client_id` and a sorted `servers` array.
+Each entry reports its server, login state, pending approval state, and expiry.
+Logged-out and expired entries remain visible until the agent restarts.
+Status reports cached agent state, not a live server check.
+
+Logout cancels pending approvals and attempts every stored login, including expired logins.
+It returns a JSON array with a `server` and `logged_out` result for each entry.
+Successful logout closes streams for that native login and preserves browser and other-device logins.
+If a server cannot be reached, logout reports failure and retains its credentials for retry.
+Other servers are still attempted, and the command exits with an error if any logout fails.
+A login started after the logout snapshot can create a new session.
+
+Use `--server` to restrict status or logout to one relay:
+
 ```sh
 sshpc status --server https://relay.example.com
 sshpc logout --server https://relay.example.com
 ```
+
+An agent must be running for status and logout.
+After upgrading from an older client, log out with that client's explicit `--server` command, then stop the old agent before using all-server commands.
+Start a new login with the updated client.
 
 The default socket is `~/.ssh/sshpd/agent.sock`.
 Use `--agent-socket /absolute/private/path/agent.sock` on each command to override it.
@@ -406,7 +472,7 @@ Startup preserves grants that have not expired.
 Expired approvals discard uncollected grants, and expired tickets are removed.
 
 ```sh
-sshpd admin -socket /var/lib/sshpd/admin.sock backup before-update
+sshpd admin --socket /var/lib/sshpd/admin.sock backup before-update
 ```
 
 The result identifies `<state_dir>/backups/before-update.db`.

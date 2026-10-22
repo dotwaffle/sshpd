@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	github.com/KimMachineGun/automemlimit v1.0.1
+	github.com/alecthomas/kong v1.16.1
 	github.com/coder/websocket v1.8.15
 	github.com/go-webauthn/webauthn v0.18.2
 	github.com/pressly/goose/v3 v3.29.0

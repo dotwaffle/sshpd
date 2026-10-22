@@ -35,7 +35,7 @@ func TestAdminCommandUsesPrivateSocket(t *testing.T) {
 		}
 	})
 	var out bytes.Buffer
-	if err = run(t.Context(), []string{"admin", "-socket", cfg.AdminSocket(), "user-add", "alice"}, &out, io.Discard); err != nil {
+	if err = run(t.Context(), []string{"admin", "--socket", cfg.AdminSocket(), "user", "add", "alice"}, &out, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	var added daemon.AdminResponse
@@ -43,7 +43,7 @@ func TestAdminCommandUsesPrivateSocket(t *testing.T) {
 		t.Fatal("CLI did not return enrollment link")
 	}
 	out.Reset()
-	if err = run(t.Context(), []string{"admin", "-socket", cfg.AdminSocket(), "users"}, &out, io.Discard); err != nil {
+	if err = run(t.Context(), []string{"admin", "--socket", cfg.AdminSocket(), "user", "list"}, &out, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	var listed daemon.AdminResponse
@@ -54,8 +54,8 @@ func TestAdminCommandUsesPrivateSocket(t *testing.T) {
 
 func TestCommandArgumentErrors(t *testing.T) {
 	for _, args := range [][]string{
-		{"unknown"}, {"admin", "users"}, {"admin", "-socket", "/unused", "key-remove", "alice"},
-		{"admin", "-socket", "/unused", "users", "extra"}, {"serve", "extra"},
+		{"unknown"}, {"admin", "user", "list"}, {"admin", "--socket", "/unused", "key", "remove", "alice"},
+		{"admin", "--socket", "/unused", "user", "list", "extra"}, {"serve", "extra"},
 	} {
 		if err := run(t.Context(), args, io.Discard, io.Discard); err == nil {
 			t.Fatalf("accepted arguments %v", args)

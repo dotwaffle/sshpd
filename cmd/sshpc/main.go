@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/dotwaffle/sshpd/client"
 	"github.com/dotwaffle/sshpd/internal/agent"
+	"github.com/dotwaffle/sshpd/internal/command"
 	"github.com/dotwaffle/sshpd/internal/nativeapi"
 	"github.com/dotwaffle/sshpd/relay"
 )
@@ -32,72 +32,78 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, input io.ReadCloser, out io.WriteCloser, errOut io.Writer) error {
-	if len(args) == 0 || args[0] == "help" {
-		_, err := fmt.Fprintln(out, "Usage: sshpc login --server HTTPS_ORIGIN [--agent-socket PATH]\n       sshpc status|logout --server HTTPS_ORIGIN [--agent-socket PATH]\n       sshpc proxy --server HTTPS_ORIGIN --host HOST --port PORT [--agent-socket PATH]\n       sshpc agent [--agent-socket PATH]")
+	var cli clientCLI
+	selected, err := command.Parse(&cli, "sshpc", args, out, errOut)
+	if err != nil || selected == "" {
 		return err
 	}
-	command := args[0]
-	if command != "login" && command != "status" && command != "logout" && command != "proxy" && command != "agent" {
-		return errors.New("unknown command, use sshpc help")
-	}
-	defaultSocket, err := agent.DefaultSocket()
-	if err != nil {
-		return err
-	}
-	flags := flag.NewFlagSet(command, flag.ContinueOnError)
-	flags.SetOutput(errOut)
-	socket := flags.String("agent-socket", defaultSocket, "private native credential-agent socket")
-	server := flags.String("server", "", "public HTTPS relay origin")
-	host := flags.String("host", "", "SSH destination host")
-	port := flags.Uint("port", 22, "SSH destination port")
-	resumeWindow := flags.Duration("resume-window", 15*time.Minute, "maximum retry time after transport loss")
-	if parseErr := flags.Parse(args[1:]); parseErr != nil {
-		return parseErr
-	}
-	if flags.NArg() != 0 {
-		return errors.New("unexpected positional arguments")
-	}
-	logger := slog.New(slog.NewJSONHandler(errOut, nil))
-	if command == "agent" {
-		return agent.Run(ctx, *socket, logger)
-	}
-	origin, err := nativeapi.Origin(*server, false)
-	if err != nil {
-		return errors.New("--server requires an HTTPS origin")
-	}
-	request := agent.Request{Server: origin}
-	switch command {
-	case "login":
-		if err := ensureAgent(ctx, *socket, request); err != nil {
+	socket := cli.AgentSocket
+	if socket == "" {
+		socket, err = agent.DefaultSocket()
+		if err != nil {
 			return err
 		}
-		return login(ctx, *socket, request, out)
+	}
+	logger := slog.New(slog.NewJSONHandler(errOut, nil))
+	if selected == "agent" {
+		return agent.Run(ctx, socket, logger)
+	}
+	var server *string
+	var configPath string
+	switch selected {
+	case "login":
+		server, configPath = cli.Login.Server, cli.Login.Config
+	case "proxy":
+		server, configPath = cli.Proxy.Server, cli.Proxy.Config
+	case "status":
+		server = cli.Status.Server
+	case "logout":
+		server = cli.Logout.Server
+	}
+	if (selected == "status" || selected == "logout") && server == nil {
+		return allServers(ctx, selected, socket, out)
+	}
+	var serverValue string
+	if server != nil {
+		serverValue = *server
+	}
+	origin, err := serverOrigin(serverValue, server != nil, configPath, errOut)
+	if err != nil {
+		return err
+	}
+	request := agent.Request{Server: origin}
+	switch selected {
+	case "login":
+		if err := ensureAgent(ctx, socket, request); err != nil {
+			return err
+		}
+		return login(ctx, socket, request, out)
 	case "status":
 		var status agent.Status
-		if _, err := agent.Call(ctx, *socket, "/status", request, &status); err != nil {
+		if _, err := agent.Call(ctx, socket, "/status", request, &status); err != nil {
 			return err
 		}
 		return json.NewEncoder(out).Encode(status)
 	case "logout":
-		_, err := agent.Call(ctx, *socket, "/logout", request, nil)
+		_, err := agent.Call(ctx, socket, "/logout", request, nil)
 		return err
 	case "proxy":
-		if *resumeWindow <= 0 {
+		if cli.Proxy.ResumeWindow <= 0 {
 			return errors.New("resume window must be positive")
 		}
-		if *port == 0 || *port > 65535 {
+		if cli.Proxy.Port == 0 || cli.Proxy.Port > 65535 {
 			return errors.New("invalid SSH port")
 		}
-		target, err := (relay.Endpoint{Host: *host, Port: uint16(*port)}).Normalize()
+		target, err := (relay.Endpoint{Host: cli.Proxy.Host, Port: uint16(cli.Proxy.Port)}).Normalize()
 		if err != nil {
 			return errors.New("invalid SSH destination")
 		}
 		request.Target = nativeapi.Target{Host: target.Host, Port: target.Port}
 		var ticket nativeapi.Ticket
-		if _, err = agent.Call(ctx, *socket, "/ticket", request, &ticket); err != nil {
+		if _, err = agent.Call(ctx, socket, "/ticket", request, &ticket); err != nil {
 			return err
 		}
-		conn, err := client.Open(ctx, client.Config{URL: origin, Destination: target, Header: http.Header{"Authorization": []string{"Bearer " + ticket.Secret}}, Logger: logger, ResumeWindow: *resumeWindow})
+		conn, err := client.Open(ctx, client.Config{URL: origin, Destination: target, Header: http.Header{"Authorization": []string{"Bearer " + ticket.Secret}}, Logger: logger, ResumeWindow: cli.Proxy.ResumeWindow})
 		if err != nil {
 			return err
 		}

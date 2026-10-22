@@ -72,7 +72,7 @@ func TestStatusUsesPrivateAgentAndHelpListsCommands(t *testing.T) {
 		t.Fatal("incorrect status")
 	}
 	output.Reset()
-	if err := run(ctx, []string{"help"}, io.NopCloser(bytes.NewReader(nil)), &output, io.Discard); err != nil || !bytes.Contains(output.Bytes(), []byte("sshpc proxy")) {
+	if err := run(ctx, []string{"help"}, io.NopCloser(bytes.NewReader(nil)), &output, io.Discard); err != nil || !bytes.Contains(output.Bytes(), []byte("proxy --host=")) {
 		t.Fatal("missing help", err)
 	}
 }

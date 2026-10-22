@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/KimMachineGun/automemlimit/memlimit"
 
+	"github.com/dotwaffle/sshpd/internal/command"
 	"github.com/dotwaffle/sshpd/internal/daemon"
 )
 
@@ -29,31 +29,25 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, out, errOut io.Writer) error {
-	if len(args) == 0 || args[0] == "help" {
-		_, err := fmt.Fprintln(out, "Usage: sshpd serve -config FILE\n       sshpd admin -socket PATH ACTION [USER [KEY_ID]]\nActions: users, user-add, user-invite, user-recover, user-disable, user-delete, key-remove, backup NAME")
+	var cli serverCLI
+	selected, err := command.Parse(&cli, "sshpd", args, out, errOut)
+	if err != nil || selected == "" {
 		return err
 	}
-	switch args[0] {
+	switch selected {
 	case "serve":
-		return serve(ctx, args[1:], errOut)
-	case "admin":
-		return admin(ctx, args[1:], out, errOut)
+		return serve(ctx, cli.Serve.Config, errOut)
 	default:
-		return errors.New("unknown command, use sshpd help")
+		input, err := cli.Admin.request(selected)
+		if err != nil {
+			return err
+		}
+		return admin(ctx, cli.Admin.Socket, input, out)
 	}
 }
 
-func serve(ctx context.Context, args []string, errOut io.Writer) error {
-	flags := flag.NewFlagSet("serve", flag.ContinueOnError)
-	flags.SetOutput(errOut)
-	path := flags.String("config", "sshpd.json", "strict JSON configuration file")
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-	if flags.NArg() != 0 {
-		return errors.New("serve does not accept positional arguments")
-	}
-	cfg, err := daemon.Load(*path)
+func serve(ctx context.Context, path string, errOut io.Writer) error {
+	cfg, err := daemon.Load(path)
 	if err != nil {
 		return err
 	}
@@ -87,7 +81,7 @@ func serve(ctx context.Context, args []string, errOut io.Writer) error {
 	signal.Notify(hup, syscall.SIGHUP)
 	defer signal.Stop(hup)
 	logger.InfoContext(ctx, "server ready", slog.String("listen", public.Addr().String()), slog.String("admin_socket", cfg.AdminSocket()))
-	err = wait(ctx, app, *path, hup, failed, logger)
+	err = wait(ctx, app, path, hup, failed, logger)
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
 	return errors.Join(err, httpServer.Shutdown(shutdownCtx), adminServer.Shutdown(shutdownCtx))
@@ -126,20 +120,7 @@ func reload(ctx context.Context, app *daemon.App, path string, logger *slog.Logg
 	}
 }
 
-func admin(ctx context.Context, args []string, out, errOut io.Writer) error {
-	flags := flag.NewFlagSet("admin", flag.ContinueOnError)
-	flags.SetOutput(errOut)
-	socket := flags.String("socket", "", "private administration socket path")
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-	if *socket == "" || flags.NArg() < 1 || flags.NArg() > 3 {
-		return errors.New("admin requires -socket and an action")
-	}
-	input := daemon.AdminRequest{Action: flags.Arg(0), Name: flags.Arg(1), KeyID: flags.Arg(2)}
-	if input.Action == "users" && flags.NArg() != 1 || input.Action == "key-remove" && flags.NArg() != 3 || input.Action != "users" && input.Action != "key-remove" && flags.NArg() != 2 {
-		return errors.New("invalid administration arguments")
-	}
+func admin(ctx context.Context, socket string, input daemon.AdminRequest, out io.Writer) error {
 	data, err := json.Marshal(input)
 	if err != nil {
 		return err
@@ -152,7 +133,7 @@ func admin(ctx context.Context, args []string, out, errOut io.Writer) error {
 	}
 	r.Header.Set("Content-Type", "application/json")
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return (&net.Dialer{}).DialContext(ctx, "unix", *socket)
+		return (&net.Dialer{}).DialContext(ctx, "unix", socket)
 	}}
 	defer transport.CloseIdleConnections()
 	response, err := (&http.Client{Transport: transport}).Do(r)

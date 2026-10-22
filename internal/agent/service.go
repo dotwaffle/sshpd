@@ -86,6 +86,10 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid agent request", http.StatusBadRequest)
 		return
 	}
+	if r.URL.Path == "/status/all" || r.URL.Path == "/logout/all" {
+		s.serveAll(w, r, input)
+		return
+	}
 	origin, err := nativeapi.Origin(input.Server, s.cfg.AllowInsecure)
 	if err != nil {
 		http.Error(w, "invalid server origin", http.StatusBadRequest)
@@ -251,6 +255,10 @@ func (s *Service) logout(ctx context.Context, origin string) error {
 	if !ok {
 		return nil
 	}
+	return s.revoke(ctx, origin, g)
+}
+
+func (s *Service) revoke(ctx context.Context, origin string, g nativeapi.Grant) error {
 	_, err := nativeapi.Post(ctx, s.cfg.HTTPClient, origin, "/native/logout", struct{}{}, g.Secret, nil)
 	if err == nil || errors.Is(err, nativeapi.ErrDenied) {
 		s.discard(origin, g.Secret)
