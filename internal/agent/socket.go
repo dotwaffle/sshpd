@@ -205,7 +205,7 @@ func serve(ctx context.Context, l net.Listener, s *Service) error {
 		if err := h.Shutdown(shutdown); err != nil {
 			_ = h.Close()
 		}
-		<-done
+		<-done //nolint:errcheck // Wait for cleanup without replacing the selected result.
 		return nil
 	}
 }

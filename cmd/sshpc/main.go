@@ -196,10 +196,10 @@ func stream(ctx context.Context, conn *client.Conn, input io.ReadCloser, output 
 		_ = output.Close()
 		_ = conn.Close()
 		if !inFinished {
-			<-inDone
+			<-inDone //nolint:errcheck // Wait for cleanup without replacing the selected result.
 		}
 		if !outFinished {
-			<-outDone
+			<-outDone //nolint:errcheck // Wait for cleanup without replacing the selected result.
 		}
 	}()
 	select {
