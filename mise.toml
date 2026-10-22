@@ -12,7 +12,7 @@ go = "1.27"
 ko = "0.19.1"
 golangci-lint = "2"
 govulncheck = "1"
-rumdl = "0.2"
+rumdl = "0.3"
 sqlc = "1"
 
 [tasks.format]
