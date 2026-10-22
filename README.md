@@ -32,10 +32,11 @@ SQL and generated sqlc types stay inside the store package.
 ## Build and check
 
 Use Go 1.26 or later.
-Development tools are configured in `mise.toml`.
+Development tools are configured in `mise.toml` and resolved versions are recorded in `mise.lock`.
+Go 1.27 is the default compiler; Go 1.26 checks compatibility.
 
 ```sh
-mise install
+mise install --locked
 mise run check
 mise run generate
 mkdir -p /tmp/build/sshpd/bin
@@ -46,6 +47,9 @@ go build -buildvcs=false -o /tmp/build/sshpd/bin/sshpc ./cmd/sshpc
 `check` runs race tests, vet, lint, vulnerability checks, and a CGO-disabled build.
 `generate` regenerates sqlc code from embedded migration schemas and queries.
 The SQLite driver does not require cgo.
+
+To update tools, run `mise lock --bump`, review the lockfile changes, and run the checks before committing.
+The lockfile covers Linux amd64, Linux arm64, and macOS arm64.
 
 ## CI and releases
 

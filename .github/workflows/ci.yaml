@@ -10,6 +10,9 @@ on:
 permissions:
   contents: read
 
+env:
+  MISE_LOCKED: "1"
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -57,5 +60,4 @@ jobs:
           mkdir -p "$test_dir"
           chmod 700 "$test_dir"
           trap 'rm -rf "$test_dir"' EXIT
-          TMPDIR="$test_dir" mise exec go@1.26 -- go test -race ./... -timeout=20m
-      - run: CGO_ENABLED=0 mise exec go@1.26 -- go build -trimpath -buildvcs=false ./...
+          TMPDIR="$test_dir" mise run test:compat

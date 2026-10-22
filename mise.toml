@@ -1,19 +1,20 @@
-min_version = "2026.7.12"
+min_version = "2026.10.17"
 
 [settings]
 lockfile = true
+lockfile_platforms = ["linux-x64", "linux-arm64", "macos-arm64"]
 
 [tool_alias]
 govulncheck = "go:golang.org/x/vuln/cmd/govulncheck"
 
 [tools]
-actionlint = "1"
+actionlint = "latest"
 go = "1.27"
-ko = "0.19.1"
-golangci-lint = "2"
-govulncheck = "1"
-rumdl = "0.3"
-sqlc = "1"
+ko = "latest"
+golangci-lint = "latest"
+govulncheck = "latest"
+rumdl = "latest"
+sqlc = "latest"
 
 [tasks.format]
 description = "Format Go sources and Markdown"
@@ -35,6 +36,11 @@ run = "go test ./..."
 [tasks."test:race"]
 description = "Run tests with the race detector"
 run = "go test -race ./... -timeout=30m"
+
+[tasks."test:compat"]
+description = "Check the minimum supported Go release"
+tools = { go = "1.26" }
+run = ["go test -race ./... -timeout=20m", "CGO_ENABLED=0 go build -trimpath -buildvcs=false ./..."]
 
 [tasks.vulncheck]
 description = "Check dependencies for known vulnerabilities"
