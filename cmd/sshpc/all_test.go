@@ -13,11 +13,15 @@ import (
 
 func commandAgent(t *testing.T, handler http.Handler) string {
 	t.Helper()
-	dir := filepath.Join(t.TempDir(), "agent")
-	if err := os.Mkdir(dir, 0o700); err != nil {
+	// Keep the path short enough for macOS and BSD without a nested directory.
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	socket := filepath.Join(dir, "agent.sock")
+	socket := filepath.Join(dir, "s")
+	if len(socket) > 103 {
+		t.Fatalf("test socket path exceeds the portable 103-byte limit: %s", socket)
+	}
 	lc := net.ListenConfig{}
 	l, err := lc.Listen(t.Context(), "unix", socket)
 	if err != nil {
