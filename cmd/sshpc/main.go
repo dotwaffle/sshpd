@@ -193,6 +193,24 @@ func pause(ctx context.Context, delay time.Duration) error {
 
 func stream(ctx context.Context, conn *client.Conn, input io.ReadCloser, output io.WriteCloser) error {
 	defer func() { _ = conn.Close() }()
+	defer func(original io.Closer) { _ = original.Close() }(input)
+	defer func(original io.Closer) { _ = original.Close() }(output)
+	if file, ok := input.(*os.File); ok {
+		prepared, err := pollableFile(file)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = prepared.Close() }()
+		input = prepared
+	}
+	if file, ok := output.(*os.File); ok {
+		prepared, err := pollableFile(file)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = prepared.Close() }()
+		output = prepared
+	}
 	inDone, outDone := make(chan error, 1), make(chan error, 1)
 	go func() { _, err := io.Copy(conn, input); inDone <- err }()
 	go func() { _, err := io.Copy(output, conn); outDone <- err }()
